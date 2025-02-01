@@ -23,6 +23,8 @@ cp -f scripts/moe.yuru.music-rpc.plist ~/Library/LaunchAgents/
 echo --- Edit launch agent plist
 # /usr/bin is for osascript
 plutil -replace EnvironmentVariables.PATH -string "$DENO_PATH_DIR:/usr/bin" ~/Library/LaunchAgents/moe.yuru.music-rpc.plist
+plutil -replace EnvironmentVariables.ARTWORK_SERVER_PORT -string "$port" ~/Library/LaunchAgents/moe.yuru.music-rpc.plist
+plutil -replace EnvironmentVariables.ARTWORK_SERVER_BASEURL -string "$url" ~/Library/LaunchAgents/moe.yuru.music-rpc.plist
 plutil -replace WorkingDirectory -string "$(pwd)" ~/Library/LaunchAgents/moe.yuru.music-rpc.plist
 echo --- Load launch agent
 launchctl load ~/Library/LaunchAgents/moe.yuru.music-rpc.plist
