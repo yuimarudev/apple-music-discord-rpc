@@ -1,7 +1,7 @@
 #!/usr/bin/env deno run --allow-env --allow-run --allow-net --allow-read --allow-write --allow-ffi --allow-import --unstable-kv
 import type { Activity } from "https://deno.land/x/discord_rpc@0.3.2/mod.ts";
 import { Client } from "https://deno.land/x/discord_rpc@0.3.2/mod.ts";
-import type {} from "https://raw.githubusercontent.com/NextFire/jxa/v0.0.5/run/global.d.ts";
+import type { } from "https://raw.githubusercontent.com/NextFire/jxa/v0.0.5/run/global.d.ts";
 import { run } from "https://raw.githubusercontent.com/NextFire/jxa/v0.0.5/run/mod.ts";
 import type { iTunes } from "https://raw.githubusercontent.com/NextFire/jxa/v0.0.5/run/types/core.d.ts";
 
@@ -18,7 +18,27 @@ class AppleMusicDiscordRPC {
     public readonly rpc: Client,
     public readonly kv: Deno.Kv,
     public readonly defaultTimeout: number,
-  ) {}
+    public localArtworksCache: Map<string, Uint8Array | null> = new Map()
+  ) {
+    const url = Deno.env.get("ARTWORK_SERVER_BASEURL");
+    const port = Deno.env.get("ARTWORK_SERVER_PORT");
+
+    if (url && port) {
+      Deno.serve({ port: parseInt(port) }, (req) => {
+        const id = new URL(req.url).pathname.slice(1);
+        const data = localArtworksCache.get(id);
+
+        if (!data) return new Response("Not found", { status: 404 });
+
+        const header = data.slice(0, 8);
+        const mimeType = "image/" + (header[0] === 0x89 && header[1] === 0x50 && header[2] === 0x4E && header[3] === 0x47 &&
+          header[4] === 0x0D && header[5] === 0x0A && header[6] === 0x1A && header[7] === 0x0A ? "png" : header[0] === 0xFF && header[1] === 0xD8 && header[2] === 0xFF ? "jpeg" : header[0] === 0x47 && header[1] === 0x49 && header[2] === 0x46 && header[3] === 0x38 ? "gif" : ((header[0] === 0x49 && header[1] === 0x49 && header[2] === 0x2A && header[3] === 0x00) ||
+            (header[0] === 0x4D && header[1] === 0x4D && header[2] === 0x00 && header[3] === 0x2A)) ? "tiff" : "bmp");
+
+        return new Response(data, { headers: { "Content-Type": mimeType } });
+      });
+    }
+  }
 
   async run(): Promise<void> {
     while (true) {
@@ -149,13 +169,23 @@ class AppleMusicDiscordRPC {
   }
 
   async cachedTrackExtras(props: iTunesProps): Promise<TrackExtras> {
-    const { name, artist, album } = props;
+    const { name, artist, album, persistentID } = props;
     const cacheIndex = `${name} ${artist} ${album}`;
-    const entry = await this.kv.get<TrackExtras>(["extras", cacheIndex]);
-    let infos = entry.value;
+    const baseurl = Deno.env.get("ARTWORK_SERVER_BASEURL");
+
+    let infos = (await this.kv.get<TrackExtras>(["extras", cacheIndex])).value;
+    let localArtwork = this.localArtworksCache.get(props.persistentID);
+
+    if (!localArtwork && localArtwork !== null && baseurl) {
+      localArtwork = await getLocalAlbumArtwork(this.appName);
+      this.localArtworksCache.set(props.persistentID, localArtwork);
+    }
 
     if (!infos) {
+      const artworkUrl = baseurl + "/" + persistentID;
       infos = await fetchTrackExtras(props);
+      infos.artworkUrl = baseurl && localArtwork ? artworkUrl : infos.artworkUrl;
+
       await this.kv.set(["extras", cacheIndex], infos);
     }
 
@@ -189,6 +219,15 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+function hexToUint8Array(hexString: string) {
+  const length = hexString.length;
+  const byteArray = new Uint8Array(length / 2);
+  for (let i = 0; i < length; i += 2) {
+    byteArray[i / 2] = parseInt(hexString.substring(i, i + 2), 16);
+  }
+  return byteArray;
+}
+
 const client = await AppleMusicDiscordRPC.create();
 await client.run();
 //#endregion
@@ -215,6 +254,17 @@ function getMusicProps(appName: iTunesAppName): Promise<iTunesProps> {
       playerPosition: music.playerPosition(),
     };
   }, appName);
+}
+
+async function getLocalAlbumArtwork(appName: iTunesAppName): Promise<Uint8Array | null> {
+  const rawData: string | undefined = await run((appName: iTunesAppName) => {
+    const music = Application(appName) as unknown as iTunes;
+    return music.currentTrack().artworks[0].rawData();
+  }, appName).catch(_ => void 0);
+
+  if (!rawData) return null;
+
+  return hexToUint8Array(rawData.slice(8, -2));
 }
 //#endregion
 
@@ -335,6 +385,7 @@ type iTunesAppName = "iTunes" | "Music";
 
 interface iTunesProps {
   id: number;
+  persistentID: string;
   name: string;
   artist: string;
   album: string;

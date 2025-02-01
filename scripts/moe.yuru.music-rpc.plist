@@ -6,6 +6,10 @@
 	<dict>
 		<key>PATH</key>
 		<string>/usr/local/bin:/usr/local/sbin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+		<key>ARTWORK_SERVER_PORT</key>
+		<string>8000</string>
+		<key>ARTWORK_SERVER_BASEURL</key>
+		<string>https://example.net</string>
 	</dict>
 	<key>KeepAlive</key>
 	<true/>
