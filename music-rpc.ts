@@ -174,11 +174,11 @@ class AppleMusicDiscordRPC {
     const baseurl = Deno.env.get("ARTWORK_SERVER_BASEURL");
 
     let infos = (await this.kv.get<TrackExtras>(["extras", cacheIndex])).value;
-    let localArtwork = this.localArtworksCache.get(props.persistentID);
+    let localArtwork = this.localArtworksCache.get(persistentID);
 
     if (!localArtwork && localArtwork !== null && baseurl) {
       localArtwork = await getLocalAlbumArtwork(this.appName);
-      this.localArtworksCache.set(props.persistentID, localArtwork);
+      this.localArtworksCache.set(persistentID, localArtwork);
     }
 
     if (!infos) {
